@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.IO;
 using UnityEditor;
 using UnityEngine;
 
@@ -9,13 +10,17 @@ public class AssetBundleBuilder
     [MenuItem("Tools/BuildBundles")]
     public static void Execute()
     {
+        if (!Directory.Exists(Application.streamingAssetsPath))
+        {
+            Directory.CreateDirectory(Application.streamingAssetsPath);
+        }
         headers = new List<string>();
         BuildBundle("uncompress", BuildAssetBundleOptions.UncompressedAssetBundle);
         BuildBundle("chunkbase", BuildAssetBundleOptions.ChunkBasedCompression);
         BuildBundle("nooption", BuildAssetBundleOptions.None);
-        BuildBundle("disableFilename", BuildAssetBundleOptions.DisableLoadAssetByFileName);
-        BuildBundle("disableFilenameWithExt", BuildAssetBundleOptions.DisableLoadAssetByFileNameWithExtension);
-        BuildBundle("disableTree", BuildAssetBundleOptions.DisableWriteTypeTree);
+        BuildBundle("disablefilename", BuildAssetBundleOptions.DisableLoadAssetByFileName);
+        BuildBundle("disablefilenamewithext", BuildAssetBundleOptions.DisableLoadAssetByFileNameWithExtension);
+        BuildBundle("disabletree", BuildAssetBundleOptions.DisableWriteTypeTree);
         CreateAssetBudleFileList();
         CreateCopyListText();
     }
@@ -45,6 +50,7 @@ public class AssetBundleBuilder
 
     private static void BuildBundle(string headerName,BuildAssetBundleOptions option)
     {
+        headerName = headerName.ToLower();
         headers.Add(headerName);
         SetupAssetBundleName(headerName);
         BuildPipeline.BuildAssetBundles(Application.streamingAssetsPath, option, EditorUserBuildSettings.activeBuildTarget);
@@ -54,8 +60,5 @@ public class AssetBundleBuilder
         string path = "Assets/UnityChan/SD_unitychan/Prefabs/SD_unitychan_generic.prefab";
         AssetImporter importer = AssetImporter.GetAtPath(path);
         importer.assetBundleName = headerName + "_unitychan.bundle";
-
-
-
     }
 }

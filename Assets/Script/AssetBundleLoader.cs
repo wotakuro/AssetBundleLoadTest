@@ -8,13 +8,100 @@ public class AssetBundleLoader
     public AssetBundle lastAssetBundle { get; private set; }
     public GameObject lastAsyncLoadPrefab { get; private set; }
 
+    private Dictionary<string, uint> abCRC;
+
+    public AssetBundleLoader(Dictionary<string,uint> assetBundleCrc)
+    {
+        this.abCRC = assetBundleCrc;
+    }
+
+    public IEnumerator LoadFromFsSync(string file)
+    {
+        this.lastAssetBundle = AssetBundle.LoadFromStream(File.OpenRead(file));
+        yield break;
+    }
+    public IEnumerator LoadFromFsSyncWithCRC(string file)
+    {
+        uint crc = 0;
+        if (this.abCRC.TryGetValue(file, out crc))
+        {
+            this.lastAssetBundle = AssetBundle.LoadFromStream(File.OpenRead(file),crc);
+        }
+        else
+        {
+        }
+        yield break;
+    }
+    public IEnumerator LoadFromBufferedFsSync(string file)
+    {
+        this.lastAssetBundle = AssetBundle.LoadFromStream( new BufferedStream( File.OpenRead(file) ));
+        yield break;
+    }
+
+    public IEnumerator LoadFromFileAsync(string file)
+    {
+        var req = AssetBundle.LoadFromFileAsync(file);
+        while (!req.isDone)
+        {
+            yield return null;
+        }
+
+        this.lastAssetBundle = req.assetBundle;
+        yield break;
+    }
 
 
-    public GameObject LoadPrefabFromAbSync(AssetBundle ab)
+    public IEnumerator LoadFromFileSync(string file)
+    {
+        this.lastAssetBundle = AssetBundle.LoadFromFile(file);
+        yield break;
+    }
+
+    public IEnumerator LoadFromFileSyncWithCRC(string file)
+    {
+        uint crc = 0;
+        if( this.abCRC.TryGetValue(file, out crc)){
+            this.lastAssetBundle = AssetBundle.LoadFromFile(file,crc);
+        }
+        else
+        {
+            Debug.LogError("No CRC " + file);
+        }
+        yield break;
+    }
+
+
+    public IEnumerator LoadFromMemorySync(string file)
+    {
+        var bin = File.ReadAllBytes(file);
+        this.lastAssetBundle = AssetBundle.LoadFromMemory(bin);
+        yield break;
+    }
+    public IEnumerator LoadFromMemorySyncWithCRC(string file)
+    {
+
+        uint crc = 0;
+        if (this.abCRC.TryGetValue(file, out crc))
+        {
+            var bin = File.ReadAllBytes(file);
+            this.lastAssetBundle = AssetBundle.LoadFromMemory(bin,crc);
+        }
+        else
+        {
+            Debug.LogError("No CRC " + file);
+        }
+        yield break;
+    }
+
+    public IEnumerator LoadPrefabFromAbSync(AssetBundle ab)
     {
         var prefab = ab.LoadAllAssets<GameObject>();
-        if(prefab == null || prefab.Length == 0) { return null; }
-        return prefab[0];
+        if(prefab == null || prefab.Length == 0) {
+            lastAsyncLoadPrefab = null;
+            yield break;
+        }
+        lastAsyncLoadPrefab = prefab[0];
+        yield break;
     }
 
 

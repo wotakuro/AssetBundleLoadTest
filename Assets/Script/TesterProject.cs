@@ -43,6 +43,8 @@ public class TesterProject : MonoBehaviour
 
     private void Awake()
     {
+        QualitySettings.vSyncCount = 0;
+        Application.targetFrameRate = 240;
         testBtn.gameObject.SetActive(false);
 #if !UNITY_EDITOR && UNITY_ANDROID
         basePath = Application.persistentDataPath;
@@ -74,7 +76,12 @@ public class TesterProject : MonoBehaviour
 
     IEnumerator Start()
     {
-        yield return null;
+        var copyObj = new CopyFileForAndroid();
+        var ie = copyObj.CopyFiles();
+        while (ie.MoveNext())
+        {
+            yield return null;
+        }
         testBtn.gameObject.SetActive(true);
         testBtn.onClick.AddListener(ExecuteTest);
         this.InitInfo();
@@ -99,64 +106,71 @@ public class TesterProject : MonoBehaviour
     private IEnumerator Execute()
     {
         IEnumerator ie = null;
-        
-        ie = SyncLoadTestWithoutCRC();
+        var loader = new AssetBundleLoader( this.abCRC);
+        // Sync
+        ie = TestAssetBundleFiles("LoadSync", loader, loader.LoadFromFileSync, loader.LoadPrefabFromAbSync);
         while (ie.MoveNext()) { yield return null; }
-        ie = SyncLoadTestWithCRC();
+        ie = TestAssetBundleFiles("LoadSyncCRC", loader, loader.LoadFromFileSyncWithCRC, loader.LoadPrefabFromAbSync);
+        while (ie.MoveNext()) { yield return null; }
+        ie = TestAssetBundleFiles("MemorySync", loader, loader.LoadFromMemorySync, loader.LoadPrefabFromAbSync);
+        while (ie.MoveNext()) { yield return null; }
+        ie = TestAssetBundleFiles("MemorySyncWithCRC", loader, loader.LoadFromMemorySyncWithCRC, loader.LoadPrefabFromAbSync);
+        while (ie.MoveNext()) { yield return null; }
+        ie = TestAssetBundleFiles("StreamSync", loader, loader.LoadFromFsSync, loader.LoadPrefabFromAbSync);
+        while (ie.MoveNext()) { yield return null; }
+        ie = TestAssetBundleFiles("StreamSyncWithCRC", loader, loader.LoadFromFsSyncWithCRC, loader.LoadPrefabFromAbSync);
+        while (ie.MoveNext()) { yield return null; }
+        ie = TestAssetBundleFiles("BufferedFsSync", loader, loader.LoadFromBufferedFsSync, loader.LoadPrefabFromAbSync);
         while (ie.MoveNext()) { yield return null; }
 
-
+        // Async
+        ie = TestAssetBundleFiles("LoadAsync", loader, loader.LoadFromFileAsync, loader.LoadPrefabFromAbAsync);
+        while (ie.MoveNext()) { yield return null; }
 
         this.ApplyResultInfos();
     }
 
-    private IEnumerator SyncLoadTestWithCRC()
+    private IEnumerator TestAssetBundleFiles(string name,
+        AssetBundleLoader loader,
+        System.Func<string,IEnumerator> loadAb,
+        System.Func<AssetBundle, IEnumerator> loadPrefab)
     {
-        AssetBundleLoader loader = new AssetBundleLoader();
+        IEnumerator ie = null;
         for (int i = 0; i < this.assetBundleFiles.Count; ++i)
         {
             var file = this.assetBundleFiles[i];
-            uint crc = 0;
-            if(!this.abCRC.TryGetValue(file,out crc)){
-                crc = 0;
+            ResultInfo info = new ResultInfo(this.assetBundleFileNameOnly[i], name, Time.realtimeSinceStartup);
+
+            ie = loadAb(file);
+            while (ie.MoveNext())
+            {
+                yield return null;
             }
-            ResultInfo info = new ResultInfo(this.assetBundleFileNameOnly[i], "LoadSyncWithCRC", Time.realtimeSinceStartup);
-            var ab = AssetBundle.LoadFromFile(file,crc);
-            GameObject prefab = null;
+            var ab = loader.lastAssetBundle;
+
             info.endTime = Time.realtimeSinceStartup;
             {
                 info.startLoadPrefab = info.endTime;
-                prefab = loader.LoadPrefabFromAbSync(ab);
+                ie = loadPrefab(ab);
+                while (ie.MoveNext())
+                {
+                    yield return null;
+                }
                 info.endLoadPrefab = Time.realtimeSinceStartup;
             }
             ab.Unload(true);
 
             this.resultInfos.Add(info);
         }
-        this.ApplyResultInfos();
-        yield break;
+        yield return null;
+        yield return null;
     }
 
-    private IEnumerator SyncLoadTestWithoutCRC() {
-        AssetBundleLoader loader = new AssetBundleLoader();
-        for (int i=0;i< this.assetBundleFiles.Count;++i)
-        {
-            var file = this.assetBundleFiles[i];
-            ResultInfo info = new ResultInfo(this.assetBundleFileNameOnly[i],"LoadFileSync",Time.realtimeSinceStartup);
-            var ab = AssetBundle.LoadFromFile(file);
-            GameObject prefab = null;
-            info.endTime = Time.realtimeSinceStartup;
-            {
-                info.startLoadPrefab = info.endTime;
-                prefab = loader.LoadPrefabFromAbSync(ab);
-                info.endLoadPrefab = Time.realtimeSinceStartup;
-            }
-            ab.Unload(true);
-
-            this.resultInfos.Add(info);
-        }
-        yield break;
+    public void ClearText()
+    {
+        this.resultTxt.text = "";
     }
+
 
     private void ApplyResultInfos()
     {
@@ -177,16 +191,18 @@ public class TesterProject : MonoBehaviour
             float prefabTime = (result.endLoadPrefab - result.startLoadPrefab)*1000.0f;
             if( lastFile != result.fileName)
             {
-                sb.Append(result.fileName).Append("\n");
+                sb.Append("-").Append(result.fileName).Append("\n");
                 lastFile = result.fileName;
             }
 
-            sb.Append("  ").Append(result.methodName).Append(" ").
+            sb.Append("   ").Append(result.methodName).Append(" ").
                 Append(time).Append("ms ").Append(prefabTime).Append("ms");
 
             sb.Append("\n");
         }
         this.resultTxt.text += sb.ToString();
+
+        Debug.Log(sb.ToString());
         resultInfos.Clear();
     }
 }
