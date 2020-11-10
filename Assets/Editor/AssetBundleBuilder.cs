@@ -22,6 +22,7 @@ public class AssetBundleBuilder
         BuildBundle("disablefilenamewithext", BuildAssetBundleOptions.DisableLoadAssetByFileNameWithExtension);
         BuildBundle("disabletree", BuildAssetBundleOptions.DisableWriteTypeTree);
         CreateAssetBudleFileList();
+        CreateSceneAssetBudleFileList();
         CreateCopyListText();
     }
 
@@ -33,9 +34,19 @@ public class AssetBundleBuilder
             sb.Append(header).Append("_unitychan.bundle").Append("\n");
         }
         System.IO.File.WriteAllText(System.IO.Path.Combine(Application.streamingAssetsPath, "ab_list.txt"), sb.ToString());
-
     }
 
+
+    private static void CreateSceneAssetBudleFileList()
+    {
+        var sb = new System.Text.StringBuilder(512);
+        foreach (var header in headers)
+        {
+            sb.Append(header).Append("_scene.bundle").Append("\n");
+        }
+        System.IO.File.WriteAllText(System.IO.Path.Combine(Application.streamingAssetsPath, "ab_scenes.txt"), sb.ToString());
+
+    }
     private  static void CreateCopyListText()
     {
         var sb = new System.Text.StringBuilder(512);
@@ -43,8 +54,11 @@ public class AssetBundleBuilder
         {
             sb.Append(header).Append("_unitychan.bundle").Append("\n");
             sb.Append(header).Append("_unitychan.bundle.manifest").Append("\n");
+            sb.Append(header).Append("_scene.bundle").Append("\n");
+            sb.Append(header).Append("_scene.bundle.manifest").Append("\n");
         }
-        sb.Append("ab_list.txt");
+        sb.Append("ab_list.txt").Append("\n");
+        sb.Append("ab_scenes.txt");
         System.IO.File.WriteAllText(System.IO.Path.Combine(Application.streamingAssetsPath, "list.txt"), sb.ToString());
     }
 
@@ -60,5 +74,9 @@ public class AssetBundleBuilder
         string path = "Assets/UnityChan/SD_unitychan/Prefabs/SD_unitychan_generic.prefab";
         AssetImporter importer = AssetImporter.GetAtPath(path);
         importer.assetBundleName = headerName + "_unitychan.bundle";
+
+
+        importer = AssetImporter.GetAtPath("Assets/Scenes/AbScene.unity");
+        importer.assetBundleName = headerName + "_scene.bundle";
     }
 }

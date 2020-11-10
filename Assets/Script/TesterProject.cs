@@ -1,19 +1,26 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
 
 public class TesterProject : MonoBehaviour
 {
     public Button testBtn;
+    public Button sceneBtn;
     public Text resultTxt;
 
     private string basePath;
-    private IEnumerator executeEnumerator;
+    private IEnumerator prefabExecIe;
+    private IEnumerator sceneExecIe;
 
     private List<string> assetBundleFiles;
     private List<string> assetBundleFileNameOnly;
+
+
+    private List<string> sceneBundleFiles;
+    private List<string> sceneBundleFileNameOnly;
     private Dictionary<string, uint> abCRC;
 
     private struct ResultInfo
@@ -23,8 +30,8 @@ public class TesterProject : MonoBehaviour
         public float startTime;
         public float endTime;
 
-        public float startLoadPrefab;
-        public float endLoadPrefab;
+        public float startLoadObject;
+        public float endLoadObject;
 
         public ResultInfo( string file , string method,float stTime)
         {
@@ -33,8 +40,8 @@ public class TesterProject : MonoBehaviour
             this.startTime = stTime;
             this.endTime = 0.0f;
 
-            this.startLoadPrefab = 0.0f;
-            this.endLoadPrefab = 0.0f;
+            this.startLoadObject = 0.0f;
+            this.endLoadObject = 0.0f;
         }
     }
 
@@ -46,6 +53,7 @@ public class TesterProject : MonoBehaviour
         QualitySettings.vSyncCount = 0;
         Application.targetFrameRate = 240;
         testBtn.gameObject.SetActive(false);
+        sceneBtn.gameObject.SetActive(false);
 #if !UNITY_EDITOR && UNITY_ANDROID
         basePath = Application.persistentDataPath;
 #else
@@ -57,6 +65,9 @@ public class TesterProject : MonoBehaviour
     {
         assetBundleFiles = new List<string>();
         assetBundleFileNameOnly = new List<string>();
+
+        sceneBundleFiles = new List<string>();
+        sceneBundleFileNameOnly = new List<string>();
         abCRC = new Dictionary<string, uint>();
 
         var lines = File.ReadAllLines(Path.Combine(basePath, "ab_list.txt"));
@@ -70,6 +81,18 @@ public class TesterProject : MonoBehaviour
             uint crc = AssetBundleLoader.GetCRCFromManifest(abPath + ".manifest");
             this.abCRC.Add(abPath, crc);
         }
+        lines = File.ReadAllLines(Path.Combine(basePath, "ab_scenes.txt"));
+        foreach (var line in lines)
+        {
+            string file = line.Trim();
+            if (string.IsNullOrEmpty(file)) { continue; }
+            sceneBundleFileNameOnly.Add(file);
+            string abPath = Path.Combine(basePath, file);
+            sceneBundleFiles.Add(abPath);
+            uint crc = AssetBundleLoader.GetCRCFromManifest(abPath + ".manifest");
+            this.abCRC.Add(abPath, crc);
+        }
+
 
         this.resultInfos = new List<ResultInfo>(lines.Length * 8);
     }
@@ -83,27 +106,43 @@ public class TesterProject : MonoBehaviour
             yield return null;
         }
         testBtn.gameObject.SetActive(true);
-        testBtn.onClick.AddListener(ExecuteTest);
+        testBtn.onClick.AddListener(PrefabTestStart);
+        sceneBtn.gameObject.SetActive(true);
+        sceneBtn.onClick.AddListener(ScenesTestStart);
         this.InitInfo();
     }
 
     public void Update()
     {
-        if (executeEnumerator != null)
+        if (prefabExecIe != null)
         {
-            if(!executeEnumerator.MoveNext() ){
-                executeEnumerator = null;
+            if (!prefabExecIe.MoveNext())
+            {
+                prefabExecIe = null;
+            }
+        }
+        if (sceneExecIe != null)
+        {
+            if (!sceneExecIe.MoveNext())
+            {
+                sceneExecIe = null;
             }
         }
     }
 
-    private void ExecuteTest()
+    private void ScenesTestStart()
     {
-        if(executeEnumerator != null) { return; }
-        executeEnumerator = Execute();
+        if(this.sceneExecIe != null) { return; }
+        this.sceneExecIe = ExecuteSceneTest();
     }
 
-    private IEnumerator Execute()
+    private void PrefabTestStart()
+    {
+        if(prefabExecIe != null) { return; }
+        prefabExecIe = ExecutePrefabTest();
+    }
+
+    private IEnumerator ExecutePrefabTest()
     {
         IEnumerator ie = null;
         var loader = new AssetBundleLoader( this.abCRC);
@@ -130,6 +169,28 @@ public class TesterProject : MonoBehaviour
         this.ApplyResultInfos();
     }
 
+
+    private IEnumerator ExecuteSceneTest()
+    {
+        IEnumerator ie = null;
+        var loader = new AssetBundleLoader(this.abCRC);
+
+        ie = TestSceneBundleFiles("SceneSync", loader, loader.LoadFromFileSync, loader.LoadScenesSync);
+        while (ie.MoveNext()) { yield return null; }
+        ie = TestSceneBundleFiles("SceneSyncWithCRC", loader, loader.LoadFromFileSyncWithCRC, loader.LoadScenesSync);
+        while (ie.MoveNext()) { yield return null; }
+        ie = TestSceneBundleFiles("SceneStreamSync", loader, loader.LoadFromFsSync, loader.LoadScenesSync);
+        while (ie.MoveNext()) { yield return null; }
+        ie = TestSceneBundleFiles("SceneStreamSyncWithCRC", loader, loader.LoadFromFsSyncWithCRC, loader.LoadScenesSync);
+        while (ie.MoveNext()) { yield return null; }
+        //Async
+        ie = TestSceneBundleFiles("SceneSync", loader, loader.LoadFromFileAsync, loader.LoadScenesAsync);
+        while (ie.MoveNext()) { yield return null; }
+
+        this.ApplyResultInfos();
+        yield break;
+    }
+
     private IEnumerator TestAssetBundleFiles(string name,
         AssetBundleLoader loader,
         System.Func<string,IEnumerator> loadAb,
@@ -150,13 +211,13 @@ public class TesterProject : MonoBehaviour
 
             info.endTime = Time.realtimeSinceStartup;
             {
-                info.startLoadPrefab = info.endTime;
+                info.startLoadObject = info.endTime;
                 ie = loadPrefab(ab);
                 while (ie.MoveNext())
                 {
                     yield return null;
                 }
-                info.endLoadPrefab = Time.realtimeSinceStartup;
+                info.endLoadObject = Time.realtimeSinceStartup;
             }
             ab.Unload(true);
 
@@ -165,6 +226,54 @@ public class TesterProject : MonoBehaviour
         yield return null;
         yield return null;
     }
+
+
+    private IEnumerator TestSceneBundleFiles(string name,
+        AssetBundleLoader loader,
+        System.Func<string, IEnumerator> loadAb,
+        System.Func<AssetBundle, IEnumerator> loadScene)
+    {
+        IEnumerator ie = null;
+        for (int i = 0; i < this.sceneBundleFiles.Count; ++i)
+        {
+            var file = this.sceneBundleFiles[i];
+            ResultInfo info = new ResultInfo(this.sceneBundleFileNameOnly[i], name, Time.realtimeSinceStartup);
+
+            ie = loadAb(file);
+            while (ie.MoveNext())
+            {
+                yield return null;
+            }
+            var ab = loader.lastAssetBundle;
+
+            info.endTime = Time.realtimeSinceStartup;
+            {
+                info.startLoadObject = info.endTime;
+                ie = loadScene(ab);
+                while (ie.MoveNext())
+                {
+                    yield return null;
+                }
+                info.endLoadObject = Time.realtimeSinceStartup;
+            }
+            for (int j = 0; j < 10; ++j)
+            {
+                yield return null;
+            }
+
+            ie = loader.UnloadLastScenes();
+            while (ie.MoveNext())
+            {
+                yield return null;
+            }
+            ab.Unload(true);
+
+            this.resultInfos.Add(info);
+        }
+        yield return null;
+        yield return null;
+    }
+
 
     public void ClearText()
     {
@@ -188,10 +297,10 @@ public class TesterProject : MonoBehaviour
         foreach( var result in this.resultInfos)
         {
             float time = (result.endTime - result.startTime) * 1000.0f;
-            float prefabTime = (result.endLoadPrefab - result.startLoadPrefab)*1000.0f;
+            float prefabTime = (result.endLoadObject - result.startLoadObject)*1000.0f;
             if( lastFile != result.fileName)
             {
-                sb.Append("-").Append(result.fileName).Append("\n");
+                sb.Append("-- ").Append(result.fileName).Append("\n");
                 lastFile = result.fileName;
             }
 
@@ -202,7 +311,24 @@ public class TesterProject : MonoBehaviour
         }
         this.resultTxt.text += sb.ToString();
 
-        Debug.Log(sb.ToString());
+        Log(sb.ToString());
         resultInfos.Clear();
+    }
+
+    private void Log(string str)
+    {
+        int current = 0;
+
+        while (current < str.Length)
+        {
+            int next = str.IndexOf("-- ",current);
+            if( next == -1)
+            {
+                next = str.Length;
+            }
+            int length = next - current;
+            Debug.Log(str.Substring(current,length) );
+            current = next + 3;
+        }
     }
 }

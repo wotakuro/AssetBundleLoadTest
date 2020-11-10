@@ -5471,7 +5471,7 @@ MonoBehaviour:
   _random: 0
   _threshold: 0.5
   _interval: 10
-  isGUI: 1
+  isGUI: 0
 --- !u!114 &11400000
 MonoBehaviour:
   m_ObjectHideFlags: 0

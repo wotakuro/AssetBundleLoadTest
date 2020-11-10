@@ -2,11 +2,13 @@
 using System.Collections.Generic;
 using UnityEngine;
 using System.IO;
+using UnityEngine.SceneManagement;
 
 public class AssetBundleLoader
 {
     public AssetBundle lastAssetBundle { get; private set; }
     public GameObject lastAsyncLoadPrefab { get; private set; }
+    public string[] lastLoadScenes { get; private set; }
 
     private Dictionary<string, uint> abCRC;
 
@@ -104,6 +106,41 @@ public class AssetBundleLoader
         yield break;
     }
 
+    public IEnumerator UnloadLastScenes()
+    {
+        if( lastLoadScenes != null)
+        {
+            foreach(var sceneName in lastLoadScenes)
+            {
+                var req = SceneManager.UnloadSceneAsync(sceneName);
+                while (!req.isDone) { yield return null; }
+            }
+            lastLoadScenes = null;
+        }
+    }
+
+    public IEnumerator LoadScenesSync(AssetBundle ab)
+    {
+        var scenes = ab.GetAllScenePaths();
+        foreach( var sceneName in scenes)
+        {
+            SceneManager.LoadScene(sceneName, LoadSceneMode.Additive);
+        }
+        this.lastLoadScenes = scenes;
+        yield break;
+    }
+
+    public IEnumerator LoadScenesAsync(AssetBundle ab)
+    {
+        var scenes = ab.GetAllScenePaths();
+        foreach (var sceneName in scenes)
+        {
+            var req = SceneManager.LoadSceneAsync(sceneName);
+            while (!req.isDone) { yield return null; }
+        }
+        this.lastLoadScenes = scenes;
+        yield break;
+    }
 
     public IEnumerator LoadPrefabFromAbAsync(AssetBundle ab)
     {
